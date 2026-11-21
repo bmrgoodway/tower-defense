@@ -88,6 +88,7 @@ body.prep .pv{display:inline-flex;}
   padding:5px 13px;font-weight:900;font-size:clamp(14px,4.2vw,22px);letter-spacing:-.01em;}
 .veil .lks{font-weight:900;font-size:clamp(9px,2.6vw,12px);color:#fff;background:#000;padding:2px 7px;}
 #lock2 .lk,#lock2 .lks{transform:rotate(180deg);}
+body.p2flat #lock2 .lk,body.p2flat #lock2 .lks{transform:none;}
 body.solo .veil{display:none !important;}
 body.solo .pv{display:none !important;}
 
@@ -1756,6 +1757,7 @@ $('#mRot').addEventListener('click', ()=>{
   if(MODES[G.mode] && MODES[G.mode].solo) return;   // 솔로는 한 방향만 쓴다
   G.p2rot = !G.p2rot;
   bars[1].style.transform = G.p2rot ? 'rotate(180deg)' : 'none';
+  document.body.classList.toggle('p2flat', !G.p2rot);
   $('#mRot').classList.toggle('on', G.p2rot);
   toast(G.p2rot ? 'P2 화면 회전' : 'P2 화면 정방향');
 });
