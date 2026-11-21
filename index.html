@@ -69,6 +69,28 @@ button:active{transform:translate(2px,2px);box-shadow:none !important;}
   font-size:clamp(10px,2.7vw,14px);}
 .snd.on{background:var(--purple);color:#fff;}
 
+/* ===== 2인 준비 턴 (웨이브 전 1P → 2P 교대) ===== */
+.pv{display:none;flex:0 0 auto;padding:6px 8px;background:var(--green);box-shadow:3px 3px 0 #000;
+  font-size:clamp(10px,2.7vw,13px);gap:3px;line-height:1;white-space:nowrap;}
+body.prep .pv{display:inline-flex;}
+.pv.wait{background:#e9e9e6;color:#777;box-shadow:none;}
+.pv.wait span{color:#777;}
+.bar.locked{background:#f1f1f1;}
+.bar.locked .brow{opacity:.5;}
+.bar.myturn{background:var(--green-light);}
+.veil{position:absolute;left:0;right:0;z-index:3;display:grid;place-items:center;gap:6px;
+  background:repeating-linear-gradient(45deg, rgba(0,0,0,.07) 0 10px, rgba(0,0,0,.15) 10px 20px);
+  touch-action:none;}
+.veil[hidden]{display:none;}
+#lock2{top:0;height:50%;}
+#lock1{bottom:0;height:50%;}
+.veil .lk{background:#fff;border:var(--bw) solid #000;box-shadow:var(--shadow);
+  padding:5px 13px;font-weight:900;font-size:clamp(14px,4.2vw,22px);letter-spacing:-.01em;}
+.veil .lks{font-weight:900;font-size:clamp(9px,2.6vw,12px);color:#fff;background:#000;padding:2px 7px;}
+#lock2 .lk,#lock2 .lks{transform:rotate(180deg);}
+body.solo .veil{display:none !important;}
+body.solo .pv{display:none !important;}
+
 /* ===== 1인 솔로 ===== */
 .snd.wv{display:none;background:var(--yellow);}
 .snd.wv .bolt{font-size:1.05em;line-height:1;}
@@ -101,7 +123,7 @@ body.solo #bn2{display:none;}
 #toast{position:absolute;left:50%;bottom:10px;z-index:9;transform:translateX(-50%);
   background:#000;color:#fff;font-weight:900;font-size:12px;padding:6px 12px;
   border:var(--bw) solid #000;box-shadow:var(--shadow);opacity:0;pointer-events:none;
-  transition:opacity .2s;white-space:nowrap;}
+  transition:opacity .2s;white-space:normal;text-align:center;max-width:92vw;line-height:1.3;}
 #toast.show{opacity:1;}
 #toast.p1{bottom:auto;top:10px;transform:translateX(-50%) rotate(180deg);}
 
@@ -181,6 +203,8 @@ body.solo #bn2{display:none;}
   <div class="bar" id="bar2"></div>
   <div id="stage">
     <canvas id="cv"></canvas>
+    <div class="veil" id="lock2" hidden><div class="lk">1P 준비 중…</div><div class="lks">잠시만 기다려 주세요</div></div>
+    <div class="veil" id="lock1" hidden><div class="lk">2P 준비 중…</div><div class="lks">잠시만 기다려 주세요</div></div>
     <div id="banner"><div class="bn" id="bn2">WAVE 1</div><div class="bn" id="bn1">WAVE 1</div></div>
     <div id="mini">
       <button id="mPause" title="일시정지" aria-label="일시정지"></button>
@@ -240,6 +264,7 @@ body.solo #bn2{display:none;}
       <div><b>타워</b>터치해서 강화·판매 (레벨 제한 없음)</div>
       <div><b>2인</b>보내기로 상대 진영에 적 투입 (+수입)</div>
       <div><b>솔로</b>⚡ 다음 웨이브로 즉시 소환 (+보너스)</div>
+      <div style="grid-column:1/-1"><b>2인 준비</b>웨이브마다 1P 준비 턴 → 2P 준비 턴 순서로 한 번씩(내 차례에만 내 진영 터치)</div>
     </div>
     <div class="foot">P2는 화면 위쪽에 180° 회전된 조작부를 사용합니다 · 솔로는 한 사람이 전장 전체를 씁니다</div>
   </div>
@@ -354,6 +379,7 @@ const G = {
   t:0,
   wave:0,
   waveT:0,
+  prepOwner:null,        // null=전투 중(또는 솔로), 0=1P 준비 턴, 1=2P 준비 턴
   coreHp:0,
   players:[],
   projs:[],
@@ -444,6 +470,7 @@ const AU = {
   boom(){ this.tone(140,40,0.2,'sawtooth',0.8); this.noise(0.16,0.9,200); },
   send(){ this.tone(420,180,0.16,'sawtooth',0.7); this.tone(300,120,0.14,'square',0.5,0.05); },
   up(){ this.tone(520,780,0.06,'square',0.7); this.tone(780,1040,0.08,'square',0.7,0.06); },
+  prep(){ this.tone(480,480,0.05,'square',0.45); this.tone(360,360,0.09,'square',0.45,0.08); },
   sell(){ this.tone(700,300,0.10,'square',0.6); },
   hurt(){ this.tone(160,70,0.22,'sawtooth',0.9); this.noise(0.2,0.7,150); },
   win(){ [523,659,784,1046].forEach((f,i)=>this.tone(f,f,0.16,'square',0.8,i*0.11)); },
@@ -575,7 +602,7 @@ function startGame(mode){
   G.phase = 'playing';
   const cfg = MODES[mode];
   const solo = !!cfg.solo;
-  G.t = 0; G.wave = 0; G.waveT = 3.2;
+  G.t = 0; G.wave = 0; G.waveT = solo ? 3.2 : 0; G.prepOwner = null;
   G.projs = []; G.fx = []; G.texts = [];
   G.sel = [null,null]; G.fly = null; G.kills=[0,0];
   G.best = Math.max(loadBest(), G.best||0);
@@ -590,13 +617,20 @@ function startGame(mode){
   layout();
   syncHUD();
   AU.ensure();
-  toast(solo ? '준비! 3초 뒤 첫 웨이브 · ⚡ 로 바로 부를 수 있어요' : '준비! 3초 후 첫 웨이브', 0);
+  if(solo){
+    toast('준비! 3초 뒤 첫 웨이브 · ⚡ 로 바로 부를 수 있어요', 0);
+  }else{
+    // 2인(대전·협동): 첫 웨이브도 1P 준비 턴부터 시작한다
+    beginPrep();
+  }
 }
 
 function backToMenu(){
   G.phase = 'menu';
   G.players = [];
+  G.prepOwner = null;
   document.body.classList.remove('solo');
+  document.body.classList.remove('prep');
   closeFly();
   $('#ovStart').hidden = false;
   $('#ovPause').hidden = true;
@@ -604,6 +638,50 @@ function backToMenu(){
   updateMenuBest();
   layout();
   render();
+}
+
+/* ============================================================
+   5-1. 준비 턴 (2인 모드 전용 · 1P → 2P 교대)
+   웨이브가 시작되기 전에 각자 한 번씩 자기 진영을 정비한다.
+   자기 차례가 아닌 쪽은 보드·HUD가 잠기고 터치가 막힌다.
+   ============================================================ */
+function is2P(){ return G.mode === '1v1' || G.mode === 'coop'; }
+
+function beginPrep(){
+  if(G.phase !== 'playing' || !is2P()) return;
+  const cfg = MODES[G.mode];
+  // 협동: 목표 웨이브를 모두 막았고 필드가 비었으면 승리
+  if(cfg.coop && G.wave >= cfg.goalWave){
+    const cleared = G.players.every(p=>p.lane.length === 0 && p.spawnQ.length === 0);
+    if(cleared){ endGame('win','win'); return; }
+  }
+  G.prepOwner = 0;
+  closeFly();
+  AU.prep();
+  showBanner('WAVE ' + (G.wave + 1) + ' 준비');
+  syncHUD();
+  toast('1P 준비 턴 · 다 되면 [준비 완료]', 0);
+}
+
+/* 1P 준비 완료 → 2P 준비 턴 */
+function prepHandoff(){
+  if(G.phase !== 'playing' || G.prepOwner !== 0) return;
+  G.prepOwner = 1;
+  closeFly();
+  AU.prep();
+  showBanner('2P 준비');
+  syncHUD();
+  toast('2P 준비 턴 · [웨이브 시작]으로 출발', 1);
+}
+
+/* 2P 웨이브 시작 → 전투 */
+function prepLaunchWave(){
+  if(G.phase !== 'playing' || G.prepOwner !== 1) return;
+  G.prepOwner = null;
+  closeFly();
+  syncHUD();
+  startWave();
+  toast('웨이브 ' + G.wave + ' 시작!', 0);
 }
 
 /* ============================================================
@@ -733,11 +811,11 @@ function hitBase(p, e){
    7. 업데이트
    ============================================================ */
 function update(dt){
+  if(G.prepOwner !== null) return;   // 준비 턴: 전투·스폰·타이머 모두 멈춤 (양쪽 공평하게)
   G.t += dt;
   G.waveT -= dt;
   if(G.waveT <= 0 && G.phase === 'playing'){
-    const cleared = G.players.every(p=>p.lane.length === 0 && p.spawnQ.length === 0);
-    if(G.mode === 'coop' && G.wave >= MODES.coop.goalWave && cleared){ endGame('win','win'); return; }
+    if(is2P()){ beginPrep(); return; }
     startWave();
   }
 
@@ -1349,7 +1427,10 @@ function barHTML(pi){
     + '<button class="snd wv" data-p="'+pi+'" data-act="next" aria-label="다음 웨이브 바로 소환">'
     + '<span class="bolt">⚡</span><span>다음 웨이브</span><b class="bon" data-k="bon">+2G</b></button>'
   + '</div>'
-  + '<div class="brow tws">' + tws + '</div>';
+  + '<div class="brow tws">' + tws
+    + '<button class="pv" data-p="'+pi+'" data-act="prep" aria-label="준비"><span data-k="pvTxt">'
+    + (pi === 1 ? '준비 완료' : '웨이브 시작') + '</span></button>'
+  + '</div>';
 }
 
 const bars = [document.getElementById('bar1'), document.getElementById('bar2')];
@@ -1377,10 +1458,20 @@ function setTxt(el, v){
 }
 
 function syncHUD(){
+  const prepOn = G.prepOwner !== null;
+  document.body.classList.toggle('prep', prepOn);
+  // 잠금 오버레이: 자기 차례가 아닌 쪽 진영
+  const l1 = $('#lock1'), l2 = $('#lock2');
+  if(l1 && l2){
+    l1.hidden = !(prepOn && G.prepOwner !== 0);
+    l2.hidden = !(prepOn && G.prepOwner !== 1);
+  }
   for(let i=0;i<2;i++){
     const p = G.players[i];
     const bar = bars[i];
     if(!bar) continue;
+    const locked = prepOn && G.prepOwner !== i;
+    const mine = prepOn && G.prepOwner === i;
     const hp = p ? p.hp : (MODES[G.mode]||MODES['1v1']).hp;
     const maxHp = p ? p.maxHp : (MODES[G.mode]||MODES['1v1']).hp;
     const gold = p ? p.gold : 0;
@@ -1399,12 +1490,28 @@ function syncHUD(){
       for(const b of bar.querySelectorAll('.tw')){
         b.classList.toggle('lack', p.gold < TOWERS[b.dataset.t].cost);
         b.classList.toggle('on', G.sel[i] === b.dataset.t);
+        b.disabled = locked;
       }
       if(MODES[G.mode] && MODES[G.mode].solo){
         const bon = bar.querySelector('[data-k="bon"]');
         if(bon) setTxt(bon, '+' + waveBonus() + 'G');
       }
     }
+    // 준비 턴: 내 차례면 [준비 완료/웨이브 시작], 상대 차례면 잠금 표시
+    const pv = bar.querySelector('.pv');
+    if(pv){
+      pv.disabled = locked;
+      pv.classList.toggle('act', mine);
+      pv.classList.toggle('wait', locked);
+      const label = locked ? (i === 0 ? '2P 차례' : '1P 차례')
+                  : (i === 0 ? '준비 완료' : '웨이브 시작');
+      setTxt(pv.querySelector('[data-k="pvTxt"]'), label);
+      if(pv.getAttribute('aria-label') !== label) pv.setAttribute('aria-label', label);
+    }
+    const sndBtn = bar.querySelector('.snd');
+    if(sndBtn) sndBtn.disabled = locked;
+    bar.classList.toggle('locked', locked);
+    bar.classList.toggle('myturn', mine);
   }
   const snd = document.querySelectorAll('.snd');
   snd.forEach(b=>b.classList.toggle('on', !!(G.fly && G.fly.kind==='send' && G.fly.p === (parseInt(b.dataset.p,10)-1))));
@@ -1549,6 +1656,11 @@ function handleTap(x, y){
   const hit = slotAt(x, y);
   if(!hit){ closeFly(); return; }
   const {p, s} = hit;
+  // 준비 턴: 자기 진영만 만질 수 있다
+  if(G.prepOwner !== null && G.prepOwner !== p.i){
+    toast((p.i === 0 ? '1P' : '2P') + ' 준비 중이에요', p.i);
+    return;
+  }
   const tower = p.towers.find(t=>t.slot === s.idx);
   if(tower){ openTowerPopup(p, s.idx); return; }
   if(G.sel[p.i]){ build(p, s.idx); closeFly(); }
@@ -1557,17 +1669,31 @@ function handleTap(x, y){
 
 stage.addEventListener('pointerdown', e=>{
   AU.ensure();
+  const veil = e.target.closest && e.target.closest('.veil');
+  if(veil){
+    const side = veil.id === 'lock2' ? 1 : 0;          // 잠긴 진영의 플레이어
+    toast((side === 1 ? '1P' : '2P') + ' 준비 중이에요', side);
+    return;
+  }
   if(e.target.closest('#flyTower') || e.target.closest('#flySend') || e.target.closest('#mini')) return;
   const r = cv.getBoundingClientRect();
   handleTap(e.clientX - r.left, e.clientY - r.top);
 });
 
 document.addEventListener('click', e=>{
+  const pvBtn = e.target.closest('.pv');
+  if(pvBtn){
+    const pi = parseInt(pvBtn.dataset.p,10) - 1;
+    if(G.phase !== 'playing' || G.prepOwner !== pi) return;   // 내 차례가 아니면 무시
+    if(pi === 0) prepHandoff(); else prepLaunchWave();
+    return;
+  }
   const twb = e.target.closest('.tw');
   if(twb){
     const pi = parseInt(twb.dataset.p,10) - 1;
     const key = twb.dataset.t;
     if(G.phase !== 'playing') return;
+    if(G.prepOwner !== null && G.prepOwner !== pi) return;
     G.sel[pi] = (G.sel[pi] === key) ? null : key;
     syncHUD();
     return;
@@ -1575,7 +1701,9 @@ document.addEventListener('click', e=>{
   const sndBtn = e.target.closest('.snd');
   if(sndBtn){
     if(sndBtn.dataset.act === 'next'){ callNextWave(); return; }
-    openSend(G.players[parseInt(sndBtn.dataset.p,10)-1]);
+    const pi = parseInt(sndBtn.dataset.p,10) - 1;
+    if(G.prepOwner !== null && G.prepOwner !== pi) return;
+    openSend(G.players[pi]);
     return;
   }
   const sb = e.target.closest('[data-send]');
@@ -1648,7 +1776,9 @@ $('#ovEnd').addEventListener('click', e=>{
 function endGame(r1, r2){
   if(G.phase === 'over') return;
   G.phase = 'over';
+  G.prepOwner = null;
   closeFly();
+  syncHUD();
   if(MODES[G.mode].solo){
     // 솔로는 정방향 단일 결과 카드
     const p = G.players[0];
@@ -1736,7 +1866,14 @@ window.__TD = {
   call(){ callNextWave(); },
   bonus(){ return waveBonus(); },
   start(mode){ startGame(mode); },
-  waveNow(){ G.waveT = 0.01; }
+  waveNow(){ G.waveT = 0.01; },
+  prep(){ return { owner:G.prepOwner, wave:G.wave, waveT:G.waveT, phase:G.phase }; },
+  tap(x,y){ handleTap(x,y); },
+  handoff(){ prepHandoff(); },
+  launch(){ prepLaunchWave(); },
+  gold(pi){ return G.players[pi] ? G.players[pi].gold : null; },
+  hp(pi){ return G.players[pi] ? G.players[pi].hp : null; },
+  enemies(pi){ return G.players[pi] ? G.players[pi].lane.length + G.players[pi].spawnQ.length : null; }
 };
 })();
 </script>
